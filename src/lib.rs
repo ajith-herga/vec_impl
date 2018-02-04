@@ -58,7 +58,7 @@ impl<T> MyVec<T> {
         }
     }
 
-    pub fn at(&self, index: usize) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             None
         } else {
@@ -79,9 +79,9 @@ mod tests {
         my_vec.push_back(0);
         my_vec.push_back(-150);
         assert_eq!(my_vec.layout.size(), 32 * size_of::<i32>());
-        assert_eq!(my_vec.at(0), Some(&15));
-        assert_eq!(my_vec.at(1), Some(&0));
-        assert_eq!(my_vec.at(2), Some(&-150));
+        assert_eq!(my_vec.get(0), Some(&15));
+        assert_eq!(my_vec.get(1), Some(&0));
+        assert_eq!(my_vec.get(2), Some(&-150));
     }
 
     #[test]
@@ -94,7 +94,24 @@ mod tests {
         my_vec.push_back(RT { val: 0 });
         my_vec.push_back(RT { val: -150 });
         assert_eq!(my_vec.layout.size(), 32 * size_of::<RT>());
-        assert_eq!(my_vec.at(0).is_some(), true);
-        assert_eq!(my_vec.at(0).unwrap().val, 15);
+        assert_eq!(my_vec.get(0).is_some(), true);
+        assert_eq!(my_vec.get(0).unwrap().val, 15);
+    }
+
+    #[test]
+    fn test_vec_str() {
+        let strings = vec!["So", "far", "so", "good"];
+        let mut my_vec: MyVec<&str> = MyVec::new();
+
+        for elem in strings.iter() {
+            my_vec.push_back(elem);
+        }
+
+        assert_eq!(my_vec.layout.size(), 32 * size_of::<&str>());
+
+        for i in 0..30
+        {
+            assert_eq!(my_vec.get(i), strings.get(i));
+        }
     }
 }
