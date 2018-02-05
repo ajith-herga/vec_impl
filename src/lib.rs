@@ -2,7 +2,7 @@
 
 use std::mem::{self, size_of};
 use std::ptr::{self, Unique};
-use std::heap::{Alloc, Heap, Layout};
+use std::heap::{Alloc, AllocErr, Heap, Layout};
 
 pub struct MyVec<T> {
     my_vec: Unique<T>,
@@ -19,12 +19,12 @@ impl<T> MyVec<T> {
         }
     }
 
-    fn resize(&mut self) {
+    fn resize(&mut self) -> Result<(), AllocErr> {
         // Allocate one size if len is 0
         if self.layout.size() == 0 {
             unsafe {
                 let layout = Layout::array::<T>(32).unwrap();
-                let ptr = Heap.alloc(layout.clone()).unwrap();
+                let ptr = Heap.alloc(layout.clone())?;
                 self.layout = layout;
                 self.my_vec = Unique::new_unchecked(mem::transmute(ptr));
             }
@@ -36,18 +36,19 @@ impl<T> MyVec<T> {
                     mem::transmute(self.my_vec.as_ptr()),
                     self.layout.clone(),
                     layout.clone(),
-                ).unwrap();
+                )?;
                 self.layout = layout;
                 self.my_vec = Unique::new_unchecked(mem::transmute(ptr));
             }
         }
+        Ok(())
     }
 
     // TODO deallocate? drop will be called.
-    pub fn push_back(&mut self, elem: T) {
+    pub fn push_back(&mut self, elem: T) -> Result<(), AllocErr> {
         // if full, alloc
         if self.len * size_of::<T>() == self.layout.size() {
-            self.resize();
+            self.resize()?;
         }
         // write
         // 1. find the offset, len?
@@ -56,6 +57,7 @@ impl<T> MyVec<T> {
             ptr::write(self.my_vec.as_ptr().offset(self.len as isize), elem);
             self.len = self.len + 1;
         }
+        Ok(())
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
@@ -75,9 +77,9 @@ mod tests {
     #[test]
     fn test_vec_i32() {
         let mut my_vec: MyVec<i32> = MyVec::new();
-        my_vec.push_back(15);
-        my_vec.push_back(0);
-        my_vec.push_back(-150);
+        my_vec.push_back(15).unwrap();
+        my_vec.push_back(0).unwrap();
+        my_vec.push_back(-150).unwrap();
         assert_eq!(my_vec.layout.size(), 32 * size_of::<i32>());
         assert_eq!(my_vec.get(0), Some(&15));
         assert_eq!(my_vec.get(1), Some(&0));
@@ -85,17 +87,19 @@ mod tests {
     }
 
     #[test]
-    fn test_vec_rt() {
-        struct RT {
-            val: i32,
+    fn test_vec_int() {
+        let ints = vec![1, 2, 3, 4, 5];
+        let mut my_vec: MyVec<i32> = MyVec::new();
+
+        for elem in ints.iter() {
+            my_vec.push_back(*elem).unwrap();
         }
-        let mut my_vec: MyVec<RT> = MyVec::new();
-        my_vec.push_back(RT { val: 15 });
-        my_vec.push_back(RT { val: 0 });
-        my_vec.push_back(RT { val: -150 });
-        assert_eq!(my_vec.layout.size(), 32 * size_of::<RT>());
-        assert_eq!(my_vec.get(0).is_some(), true);
-        assert_eq!(my_vec.get(0).unwrap().val, 15);
+
+        assert_eq!(my_vec.layout.size(), 32 * size_of::<i32>());
+
+        for i in 0..30 {
+            assert_eq!(my_vec.get(i), ints.get(i));
+        }
     }
 
     #[test]
@@ -104,14 +108,47 @@ mod tests {
         let mut my_vec: MyVec<&str> = MyVec::new();
 
         for elem in strings.iter() {
-            my_vec.push_back(elem);
+            my_vec.push_back(elem).unwrap();
         }
 
         assert_eq!(my_vec.layout.size(), 32 * size_of::<&str>());
 
-        for i in 0..30
-        {
+        for i in 0..30 {
             assert_eq!(my_vec.get(i), strings.get(i));
+        }
+    }
+
+    #[test]
+    fn test_vec_rt_ref() {
+        #[derive(Debug)]
+        struct RT<'a> {
+            val: i32,
+            name: &'a str,
+        }
+
+        impl<'a> RT<'a> {
+            fn new(val: i32) -> Self {
+                RT { val, name: "Ajith" }
+            }
+        }
+
+        let rts = vec![
+            RT::new(15),
+            RT::new(150),
+            RT::new(0),
+            RT::new(-1),
+            RT::new(150),
+        ];
+        let mut my_vec: MyVec<&RT> = MyVec::new();
+
+        for elem in rts.iter() {
+            my_vec.push_back(elem).unwrap();
+        }
+
+        assert_eq!(my_vec.layout.size(), 32 * size_of::<&RT>());
+
+        for i in 0..rts.len() {
+            assert_eq!(my_vec.get(i).unwrap().val, rts.get(i).unwrap().val);
         }
     }
 }
