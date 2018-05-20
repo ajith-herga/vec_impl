@@ -1,5 +1,6 @@
 #![feature(allocator_api, ptr_internals, unique)]
 
+use std::cmp::{self};
 use std::mem::{self, size_of};
 use std::ptr::{self, Unique};
 use std::heap::{Alloc, AllocErr, Heap, Layout};
@@ -13,26 +14,21 @@ pub struct MyVec<T> {
 
 impl<T> MyVec<T> {
     pub fn new(reserve: Option<usize>) -> Self {
-        if let Some(reserve) = reserve {
-            MyVec {
-                my_vec: Unique::empty(),
-                layout: Layout::new::<()>(),
-                len: 0,
-                reserve,
-            }
-        } else {
-            MyVec {
-                my_vec: Unique::empty(),
-                layout: Layout::new::<()>(),
-                len: 0,
-                reserve: 32,
-            }
+        MyVec {
+            my_vec: Unique::empty(),
+            layout: Layout::new::<()>(),
+            len: 0,
+            reserve: cmp::max(reserve.unwrap_or(32), 4),
         }
+    }
+
+    fn capacity(&self) -> usize {
+        self.layout.size()/size_of::<T>()
     }
 
     fn resize(&mut self) -> Result<(), AllocErr> {
         // Allocate one size if len is 0
-        if self.layout.size() == 0 {
+        if self.capacity() == 0 {
             unsafe {
                 let layout = Layout::array::<T>(self.reserve).unwrap();
                 let ptr = Heap.alloc(layout.clone())?;
@@ -55,20 +51,17 @@ impl<T> MyVec<T> {
         Ok(())
     }
 
-    // TODO deallocate? drop will be called.
-    pub fn push_back(&mut self, elem: T) -> Result<(), AllocErr> {
-        // if full, alloc
-        if self.len * size_of::<T>() == self.layout.size() {
-            self.resize()?;
+    pub fn push_back(&mut self, elem: T) {
+        // if no space left, resize to increase capacity.
+        if self.len == self.capacity() {
+            self.resize().unwrap();
         }
-        // write
-        // 1. find the offset, len?
+        // append
         // TODO: self.len is usize, offset expects isize. Overflow?
         unsafe {
             ptr::write(self.my_vec.as_ptr().offset(self.len as isize), elem);
             self.len = self.len + 1;
         }
-        Ok(())
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
@@ -76,6 +69,46 @@ impl<T> MyVec<T> {
             None
         } else {
             unsafe { self.my_vec.as_ptr().offset(index as isize).as_ref() }
+        }
+    }
+
+    fn trim(&mut self) -> Result<(), AllocErr> {
+        // Let minimum size remain at reserve. TODO: constant 4.
+        let target_size = self.capacity()/2;
+        if (self.capacity() >= self.reserve * 2)  && (self.len <= target_size/2) {
+            unsafe {
+                let layout = Layout::array::<T>(target_size).unwrap();
+                let ptr = Heap.realloc(
+                    mem::transmute(self.my_vec.as_ptr()),
+                    self.layout.clone(),
+                    layout.clone(),
+                )?;
+                self.layout = layout;
+                self.my_vec = Unique::new_unchecked(mem::transmute(ptr));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        if self.len == 0 {
+            None
+        } else {
+            let ret = unsafe {
+                self.len = self.len - 1;
+                // len is now index.
+                ptr::read(self.my_vec.as_ptr().offset(self.len as isize))
+            };
+            self.trim().unwrap();
+            Some(ret)
+        }
+    }
+
+    pub fn back(&self) -> Option<&T> {
+        if self.len == 0 {
+            None
+        } else {
+            self.get(self.len - 1)
         }
     }
 }
@@ -93,7 +126,6 @@ impl<T> Drop for MyVec<T> {
 #[cfg(test)]
 mod tests {
     use super::MyVec;
-    use std::mem::size_of;
 
     #[test]
     fn test_vec_int() {
@@ -101,7 +133,7 @@ mod tests {
         let mut my_vec: MyVec<i32> = MyVec::new(None);
 
         for elem in ints.iter() {
-            my_vec.push_back(*elem).unwrap();
+            my_vec.push_back(*elem);
         }
 
         for i in 0..30 {
@@ -115,7 +147,7 @@ mod tests {
         let mut my_vec: MyVec<&str> = MyVec::new(None);
 
         for elem in strings.iter() {
-            my_vec.push_back(elem).unwrap();
+            my_vec.push_back(elem);
         }
 
         for i in 0..30 {
@@ -145,34 +177,44 @@ mod tests {
     fn test_vec_rt_val() {
         let mut my_vec: MyVec<RT> = MyVec::new(Some(2));
 
-        my_vec.push_back(RT::new(15)).unwrap();
-        my_vec.push_back(RT::new(150)).unwrap();
-        my_vec.push_back(RT::new(0)).unwrap();
-        my_vec.push_back(RT::new(-15)).unwrap();
-        my_vec.push_back(RT::new(-150)).unwrap();
+        let ints = vec![15, 150, 200, 250, 0, -15, -150, -200, -250];
+        for elem in ints.iter() {
+            my_vec.push_back(RT::new(*elem));
+        }
 
-        assert_eq!(my_vec.layout.size(), 8 * size_of::<RT>());
+        assert_eq!(my_vec.capacity(), 16);
+        assert_eq!(my_vec.len, 9);
+
+        // Drain the elements
+        for elem in ints.iter().rev() {
+            assert_eq!(*elem, my_vec.pop().unwrap().val);
+        }
+        assert_eq!(my_vec.len, 0);
+        assert_eq!(my_vec.pop().is_none(), true);
+        assert_eq!(my_vec.back().is_none(), true);
+        assert_eq!(my_vec.capacity(), 4);
     }
 
     #[test]
     fn test_vec_rt_ref() {
-        let rts = vec![
-            RT::new(15),
-            RT::new(150),
-            RT::new(0),
-            RT::new(-1),
-            RT::new(150),
-        ];
+        let mut rts: MyVec<RT> = MyVec::new(Some(2));
         let mut my_vec: MyVec<&RT> = MyVec::new(Some(2));
 
-        for elem in rts.iter() {
-            my_vec.push_back(elem).unwrap();
+        let ints = vec![15, 150, 200, 250, 0, -15, -150, -200, -250];
+        for elem in ints.iter() {
+            rts.push_back(RT::new(*elem));
+            // Filling references to my_vec here will be blocked by the compiler
+            // my_vec.push_back(rts.back().unwrap());
         }
 
-        assert_eq!(my_vec.layout.size(), 8 * size_of::<&RT>());
+        for i in 0..ints.len() {
+            my_vec.push_back(rts.get(i).unwrap());
+        }
 
-        for i in 0..rts.len() {
-            assert_eq!(my_vec.get(i).unwrap().val, rts.get(i).unwrap().val);
+        assert_eq!(my_vec.capacity(), 16);
+
+        for i in (0..ints.len()).rev() {
+            assert_eq!(my_vec.get(i).unwrap().val, my_vec.pop().unwrap().val);
         }
     }
 }
