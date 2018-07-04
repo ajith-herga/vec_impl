@@ -4,7 +4,7 @@
     * Index trait, reuse get.
     * Allow  for move.
     * Extend using another vector
-    * Implement `iter`, `into_iter` and `double_ended_iter`.
+    * Implement `double_ended_iter`.
     * Define macro to initialize from a literal array
 ## New datastrutures
     * Deque? The new interest.

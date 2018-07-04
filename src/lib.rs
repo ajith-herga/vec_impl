@@ -1,6 +1,6 @@
 #![feature(allocator_api, ptr_internals, unique)]
 
-use std::cmp::{self};
+use std::cmp;
 use std::mem::{self, size_of};
 use std::ptr::{self, Unique};
 use std::heap::{Alloc, AllocErr, Heap, Layout};
@@ -10,6 +10,58 @@ pub struct MyVec<T> {
     layout: Layout,
     len: usize,
     reserve: usize,
+}
+
+// IntoIter reads data from the first element.
+// Disintegrate MyVec to get a new data structure.
+// Ways to wrap MyVec instead:
+// Use pop to read backwards.
+// into_iter could take a one time cost of O(n) to reverse Myvec
+// so IntoIter::next could use pop().
+// Its hard for MyVec to provide safe methods for IntoIter.
+// There could be a pop_front on MyVec, but then MyVec needs to
+// change fundamentally to a circular buffer..
+pub struct IntoIter<T> {
+    my_vec: Unique<T>,
+    len: usize,
+    next: usize,
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next >= self.len {
+            None
+        } else {
+            let ret = unsafe { ptr::read(self.my_vec.as_ptr().offset(self.next as isize)) };
+            self.next = self.next + 1;
+            Some(ret)
+        }
+    }
+}
+
+impl<T> Drop for IntoIter<T> {
+    fn drop(&mut self) {
+        for index in 0..self.len {
+            unsafe {
+                ptr::read(self.my_vec.as_ptr().offset(index as isize));
+            }
+        }
+    }
+}
+
+pub struct Iter<'a, T: 'a> {
+    vec: &'a MyVec<T>,
+    next_offset: usize,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        let ret = self.vec.get(self.next_offset);
+        self.next_offset = self.next_offset + 1;
+        ret
+    }
 }
 
 impl<T> MyVec<T> {
@@ -23,7 +75,7 @@ impl<T> MyVec<T> {
     }
 
     fn capacity(&self) -> usize {
-        self.layout.size()/size_of::<T>()
+        self.layout.size() / size_of::<T>()
     }
 
     fn resize(&mut self) -> Result<(), AllocErr> {
@@ -72,10 +124,22 @@ impl<T> MyVec<T> {
         }
     }
 
+    pub fn into_iter(self) -> IntoIter<T> {
+        IntoIter {
+            my_vec: self.my_vec,
+            len: self.len,
+            next: 0,
+        }
+    }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter { vec: self, next_offset: 0 }
+    }
+
     fn trim(&mut self) -> Result<(), AllocErr> {
         // Let minimum size remain at reserve. TODO: constant 4.
-        let target_size = self.capacity()/2;
-        if (self.capacity() >= self.reserve * 2)  && (self.len <= target_size/2) {
+        let target_size = self.capacity() / 2;
+        if (self.capacity() >= self.reserve * 2) && (self.len <= target_size / 2) {
             unsafe {
                 let layout = Layout::array::<T>(target_size).unwrap();
                 let ptr = Heap.realloc(
@@ -90,6 +154,14 @@ impl<T> MyVec<T> {
         Ok(())
     }
 
+    pub fn back(&self) -> Option<&T> {
+        if self.len == 0 {
+            None
+        } else {
+            self.get(self.len - 1)
+        }
+    }
+
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
             None
@@ -101,14 +173,6 @@ impl<T> MyVec<T> {
             };
             self.trim().unwrap();
             Some(ret)
-        }
-    }
-
-    pub fn back(&self) -> Option<&T> {
-        if self.len == 0 {
-            None
-        } else {
-            self.get(self.len - 1)
         }
     }
 }
@@ -150,8 +214,16 @@ mod tests {
             my_vec.push_back(elem);
         }
 
-        for i in 0..30 {
-            assert_eq!(my_vec.get(i), strings.get(i));
+        for elem in my_vec.iter().enumerate() {
+            assert_eq!(*elem.1, *strings.get(elem.0).unwrap());
+        }
+
+        for elem in my_vec.iter().enumerate() {
+            assert_eq!(elem.1, strings.get(elem.0).unwrap());
+        }
+
+        for elem in my_vec.into_iter().enumerate() {
+            assert_eq!(elem.1, *strings.get(elem.0).unwrap());
         }
     }
 
