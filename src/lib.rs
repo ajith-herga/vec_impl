@@ -1,7 +1,8 @@
 #![feature(allocator_api, ptr_internals, unique)]
 
-use std::cmp;
+use std::{cmp, slice};
 use std::mem::{self, size_of};
+use std::ops::{Deref, DerefMut};
 use std::ptr::{self, Unique};
 use std::heap::{Alloc, AllocErr, Heap, Layout};
 
@@ -12,15 +13,15 @@ pub struct MyVec<T> {
     reserve: usize,
 }
 
-// IntoIter reads data from the first element.
-// Disintegrate MyVec to get a new data structure.
-// Ways to wrap MyVec instead:
-// Use pop to read backwards.
-// into_iter could take a one time cost of O(n) to reverse Myvec
-// so IntoIter::next could use pop().
-// Its hard for MyVec to provide safe methods for IntoIter.
-// There could be a pop_front on MyVec, but then MyVec needs to
-// change fundamentally to a circular buffer..
+/*
+ * IntoIter reads data from the first element.  Disintegrate MyVec to get a new
+ * data structure.
+ * Ways to wrap MyVec instead: Use pop to read backwards.
+ * into_iter could take a one time cost of O(n) to reverse Myvec so
+ * IntoIter::next could use pop().  Its hard for MyVec to provide safe methods
+ * for IntoIter.  There could be a pop_front on MyVec, but then MyVec needs to
+ * change fundamentally to a circular buffer..
+ */
 pub struct IntoIter<T> {
     my_vec: Unique<T>,
     len: usize,
@@ -47,20 +48,6 @@ impl<T> Drop for IntoIter<T> {
                 ptr::read(self.my_vec.as_ptr().offset(index as isize));
             }
         }
-    }
-}
-
-pub struct Iter<'a, T: 'a> {
-    vec: &'a MyVec<T>,
-    next_offset: usize,
-}
-
-impl<'a, T> Iterator for Iter<'a, T> {
-    type Item = &'a T;
-    fn next(&mut self) -> Option<Self::Item> {
-        let ret = self.vec.get(self.next_offset);
-        self.next_offset = self.next_offset + 1;
-        ret
     }
 }
 
@@ -116,13 +103,10 @@ impl<T> MyVec<T> {
         }
     }
 
-    pub fn get(&self, index: usize) -> Option<&T> {
-        if index >= self.len {
-            None
-        } else {
-            unsafe { self.my_vec.as_ptr().offset(index as isize).as_ref() }
-        }
-    }
+    /* Comes from Deref.
+    pub fn get(&self, index: usize) -> Option<&T> {}
+    pub fn iter(&self) -> Iter<T> {}
+    */
 
     pub fn into_iter(self) -> IntoIter<T> {
         IntoIter {
@@ -130,10 +114,6 @@ impl<T> MyVec<T> {
             len: self.len,
             next: 0,
         }
-    }
-
-    pub fn iter(&self) -> Iter<T> {
-        Iter { vec: self, next_offset: 0 }
     }
 
     fn trim(&mut self) -> Result<(), AllocErr> {
@@ -187,19 +167,60 @@ impl<T> Drop for MyVec<T> {
     }
 }
 
+impl<T> Deref for MyVec<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            slice::from_raw_parts(self.my_vec.as_ptr(), self.len)
+        }
+    }
+}
+
+impl<T> DerefMut for MyVec<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe {
+            slice::from_raw_parts_mut(self.my_vec.as_ptr(), self.len)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::MyVec;
 
     #[test]
     fn test_vec_int() {
-        let ints = vec![1, 2, 3, 4, 5];
+        let mut ints = vec![1, 2, 3, 4, 5];
         let mut my_vec: MyVec<i32> = MyVec::new(None);
 
         for elem in ints.iter() {
             my_vec.push_back(*elem);
         }
 
+        /* Verify Deref into splice, access method of splice. */
+        assert_eq!(my_vec.is_empty(), false);
+        assert_eq!(my_vec.len(), ints.len());
+        assert_eq!(my_vec.first(), Some(&1));
+        assert_eq!(my_vec.last(), Some(&5));
+
+        {
+            /* In a block to scope immutable borrow. */
+            let mut splits = my_vec.split(|n| n % 2 == 0);
+            assert_eq!(splits.next().unwrap(), &[1]);
+            assert_eq!(splits.next().unwrap(), &[3]);
+            assert_eq!(splits.next().unwrap(), &[5]);
+        }
+
+        assert_eq!(my_vec[my_vec.len() - 1], 5);
+        for i in 0..30 {
+            assert_eq!(my_vec.get(i), ints.get(i));
+        }
+        /* One of those times when borrow checker is too conservative */
+        let vec_len = my_vec.len()/2;
+        my_vec[vec_len] = 35;
+        let vec_len = ints.len()/2;
+        ints[vec_len] = my_vec[my_vec.len()/2];
         for i in 0..30 {
             assert_eq!(my_vec.get(i), ints.get(i));
         }
