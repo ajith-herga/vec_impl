@@ -1,10 +1,11 @@
-#![feature(allocator_api, ptr_internals, unique)]
+#![feature(allocator_api, alloc_layout_extra, ptr_internals)]
 
 use std::{cmp, slice};
 use std::mem::{self, size_of};
 use std::ops::{Deref, DerefMut};
 use std::ptr::{self, Unique};
-use std::heap::{Alloc, AllocErr, Heap, Layout};
+// Unique does not implement move semantics, nor destroy underlying resource.
+use std::alloc::{alloc, realloc, dealloc, Layout, handle_alloc_error};
 
 pub struct MyVec<T> {
     my_vec: Unique<T>,
@@ -65,35 +66,49 @@ impl<T> MyVec<T> {
         self.layout.size() / size_of::<T>()
     }
 
-    fn resize(&mut self) -> Result<(), AllocErr> {
+    fn erase(&mut self) {
+        self.my_vec = Unique::empty();
+        self.layout = Layout::new::<()>();
+        self.len = 0;
+        self.reserve = 4
+    }
+
+    fn grow(&mut self) {
         // Allocate one size if len is 0
         if self.capacity() == 0 {
             unsafe {
                 let layout = Layout::array::<T>(self.reserve).unwrap();
-                let ptr = Heap.alloc(layout.clone())?;
+                let ptr = alloc(layout);
+                if ptr.is_null() {
+                    handle_alloc_error(layout);
+                }
                 self.layout = layout;
                 self.my_vec = Unique::new_unchecked(mem::transmute(ptr));
             }
         } else {
-            // Reallocate if size is not zero.
+            // grow by reallocate if size is not zero.
             unsafe {
-                let layout = self.layout.extend(self.layout.clone()).unwrap().0;
-                let ptr = Heap.realloc(
+                // Double the layout by extending it by its own size.
+                let layout = self.layout.extend(self.layout).unwrap().0;
+                let ptr = realloc(
                     mem::transmute(self.my_vec.as_ptr()),
-                    self.layout.clone(),
-                    layout.clone(),
-                )?;
+                    self.layout,
+                    layout.size(),
+                );
+                if ptr.is_null() {
+                    handle_alloc_error(layout);
+                }
                 self.layout = layout;
+                // Own the allocated pointer.
                 self.my_vec = Unique::new_unchecked(mem::transmute(ptr));
             }
         }
-        Ok(())
     }
 
     pub fn push_back(&mut self, elem: T) {
         // if no space left, resize to increase capacity.
         if self.len == self.capacity() {
-            self.resize().unwrap();
+            self.grow();
         }
         // append
         // TODO: self.len is usize, offset expects isize. Overflow?
@@ -116,22 +131,24 @@ impl<T> MyVec<T> {
         }
     }
 
-    fn trim(&mut self) -> Result<(), AllocErr> {
+    fn trim(&mut self) {
         // Let minimum size remain at reserve. TODO: constant 4.
         let target_size = self.capacity() / 2;
         if (self.capacity() >= self.reserve * 2) && (self.len <= target_size / 2) {
             unsafe {
                 let layout = Layout::array::<T>(target_size).unwrap();
-                let ptr = Heap.realloc(
+                let ptr = realloc(
                     mem::transmute(self.my_vec.as_ptr()),
-                    self.layout.clone(),
-                    layout.clone(),
-                )?;
+                    self.layout,
+                    layout.size(),
+                );
+                if ptr.is_null() {
+                    handle_alloc_error(layout);
+                }
                 self.layout = layout;
                 self.my_vec = Unique::new_unchecked(mem::transmute(ptr));
             }
         }
-        Ok(())
     }
 
     pub fn back(&self) -> Option<&T> {
@@ -151,7 +168,7 @@ impl<T> MyVec<T> {
                 // len is now index.
                 ptr::read(self.my_vec.as_ptr().offset(self.len as isize))
             };
-            self.trim().unwrap();
+            self.trim();
             Some(ret)
         }
     }
