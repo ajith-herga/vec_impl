@@ -322,6 +322,48 @@ mod tests {
         }
     }
 
+    use std::ptr::{Unique};
+    use std::mem;
+    use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+    #[derive(Debug)]
+    struct AT<T> {
+        alloc: Unique<T>,
+        layout: Layout,
+    }
+
+    impl<T> AT<T> {
+        fn new(count: usize) -> Self {
+            let layout = Layout::array::<T>(std::cmp::max(count, 4)).unwrap();
+            unsafe {
+                let ptr = alloc(layout);
+                if ptr.is_null() {
+                    handle_alloc_error(layout);
+                }
+                AT {
+                    alloc: Unique::new_unchecked(mem::transmute(ptr)),
+                    layout: layout,
+                    }
+            }
+        }
+    }
+
+    impl<T> Drop for AT<T> {
+        // Run test with RUSTFLAGS="-Z sanitizer=address"
+        fn drop(&mut self) {
+            unsafe {
+                dealloc(mem::transmute(self.alloc.as_ptr()), self.layout);
+            }
+        }
+    }
+
+    #[test]
+    fn test_vec_at_val() {
+        let mut my_vec: MyVec<AT<i32>> = MyVec::new(None);
+        for i in 0..30 {
+            my_vec.push_back(AT::new(10 + i));
+        }
+    }
+
     #[test]
     fn test_vec_rt_val() {
         let mut my_vec: MyVec<RT> = MyVec::new(Some(2));
