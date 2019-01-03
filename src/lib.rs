@@ -7,6 +7,9 @@ use std::ptr::{self, Unique};
 // Unique does not implement move semantics, nor destroy underlying resource.
 use std::alloc::{alloc, realloc, dealloc, Layout, handle_alloc_error};
 
+/*
+ * MyVec aims to provide functionality that matches std::vec::Vec.
+ */
 pub struct MyVec<T> {
     my_vec: Unique<T>,
     layout: Layout,
@@ -216,8 +219,10 @@ impl<T> DerefMut for MyVec<T> {
 mod tests {
     use super::MyVec;
 
-    // Test the assumptions made in the implementation.
-    // alloc, dealloc and interaction with Unique.
+    /*
+     * Test the assumptions made in the implementation.
+     * alloc, dealloc and interaction with Unique.
+     */
     #[test]
     fn test_alloc_unique() {
         use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
@@ -245,6 +250,7 @@ mod tests {
         let _my_vec: MyVec<i32> = MyVec::new(None);
     }
 
+    /* Test vector of simple integers, for Deref and DerefMut */
     #[test]
     fn test_vec_int() {
         let mut ints = vec![1, 2, 3, 4, 5];
@@ -282,46 +288,37 @@ mod tests {
         }
     }
 
+    /*
+     * Test iterating a vector of references to strings.
+     */
     #[test]
     fn test_vec_str() {
         let strings = vec!["So", "far", "so", "good"];
         let mut my_vec: MyVec<&str> = MyVec::new(None);
 
+        // Setup.
         for elem in strings.iter() {
             my_vec.push_back(elem);
         }
 
+        // Test iteration by borrowing.
+        // Compare values.
         for elem in my_vec.iter().enumerate() {
             assert_eq!(*elem.1, *strings.get(elem.0).unwrap());
         }
 
+        // Compare references.
         for elem in my_vec.iter().enumerate() {
             assert_eq!(elem.1, strings.get(elem.0).unwrap());
         }
 
+        // Test iteration by consuming.
         for elem in my_vec.into_iter().enumerate() {
             assert_eq!(elem.1, *strings.get(elem.0).unwrap());
         }
     }
 
-    #[derive(Debug)]
-    struct RT<'a> {
-        val: i32,
-        name: &'a str,
-    }
-
-    impl<'a> RT<'a> {
-        fn new(val: i32) -> Self {
-            RT { val, name: "Ajith" }
-        }
-    }
-
-    impl<'a> Drop for RT<'a> {
-        fn drop(&mut self) {
-            //println!("Called drop for RT ({}, {})", self.val, self.name);
-        }
-    }
-
+    // Type that holds an allocated value.
     use std::ptr::{Unique};
     use std::mem;
     use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
@@ -356,6 +353,8 @@ mod tests {
         }
     }
 
+    // Integration if allocated type with vector. The test is setup to allocate
+    // memory. Use address sanitizer to verify that API releases memory as well.
     #[test]
     fn test_vec_at_val() {
         let mut my_vec: MyVec<AT<i32>> = MyVec::new(None);
@@ -364,6 +363,28 @@ mod tests {
         }
     }
 
+    // Type that holds a reference to a string.
+    #[derive(Debug)]
+    struct RT<'a> {
+        val: i32,
+        name: &'a str,
+    }
+
+    impl<'a> RT<'a> {
+        fn new(val: i32) -> Self {
+            RT { val, name: "Star" }
+        }
+    }
+
+    impl<'a> Drop for RT<'a> {
+        fn drop(&mut self) {
+            //println!("Called drop for RT ({}, {})", self.val, self.name);
+        }
+    }
+
+    /*
+     * Test iterating a vector of RTs.
+     */
     #[test]
     fn test_vec_rt_val() {
         let mut my_vec: MyVec<RT> = MyVec::new(Some(2));
@@ -386,26 +407,29 @@ mod tests {
         assert_eq!(my_vec.capacity(), 4);
     }
 
+    /*
+     * Test iterating a vector of references to RTs.
+     */
     #[test]
     fn test_vec_rt_ref() {
         let mut rts: MyVec<RT> = MyVec::new(Some(2));
-        let mut my_vec: MyVec<&RT> = MyVec::new(Some(2));
+        let mut rt_refs: MyVec<&RT> = MyVec::new(Some(2));
 
         let ints = vec![15, 150, 200, 250, 0, -15, -150, -200, -250];
         for elem in ints.iter() {
             rts.push_back(RT::new(*elem));
-            // Filling references to my_vec here will be blocked by the compiler
-            // my_vec.push_back(rts.back().unwrap());
+            // Filling references to rt_refs here will be blocked by the compiler
+            // rt_refs.push_back(rts.back().unwrap());
         }
 
         for i in 0..ints.len() {
-            my_vec.push_back(rts.get(i).unwrap());
+            rt_refs.push_back(rts.get(i).unwrap());
         }
 
-        assert_eq!(my_vec.capacity(), 16);
+        assert_eq!(rt_refs.capacity(), 16);
 
         for i in (0..ints.len()).rev() {
-            assert_eq!(my_vec.get(i).unwrap().val, my_vec.pop().unwrap().val);
+            assert_eq!(rt_refs.get(i).unwrap().val, rt_refs.pop().unwrap().val);
         }
     }
 }
