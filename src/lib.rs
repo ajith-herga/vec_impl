@@ -15,16 +15,17 @@ pub struct MyVec<T> {
 }
 
 /*
- * IntoIter reads data from the first element.  Disintegrate MyVec to get a new
- * data structure.
- * Ways to wrap MyVec instead: Use pop to read backwards.
- * into_iter could take a one time cost of O(n) to reverse Myvec so
- * IntoIter::next could use pop().  Its hard for MyVec to provide safe methods
- * for IntoIter.  There could be a pop_front on MyVec, but then MyVec needs to
- * change fundamentally to a circular buffer..
+ * IntoIter iterates while consuming the data. It begins from the first element.
+ * Disintegrate MyVec to get a new data structure.
+ * Ways to wrap MyVec instead:
+ * Use pop to read backwards. To read from beginning, with the same scheme,
+ * into_iter could take a one time cost of O(n) to reverse Myvec.
+ * Its hard for MyVec to provide safe methods for IntoIter. A safe
+ * pop_front on MyVec would only be possible with a circular buffer..
  */
 pub struct IntoIter<T> {
     my_vec: Unique<T>,
+    layout: Layout,
     len: usize,
     next: usize,
 }
@@ -44,9 +45,12 @@ impl<T> Iterator for IntoIter<T> {
 
 impl<T> Drop for IntoIter<T> {
     fn drop(&mut self) {
-        for index in 0..self.len {
-            unsafe {
+        unsafe {
+            for index in 0..self.len {
                 ptr::read(self.my_vec.as_ptr().offset(index as isize));
+            }
+            if self.len != 0 {
+                dealloc(mem::transmute(self.my_vec.as_ptr()), self.layout);
             }
         }
     }
@@ -123,12 +127,15 @@ impl<T> MyVec<T> {
     pub fn iter(&self) -> Iter<T> {}
     */
 
-    pub fn into_iter(self) -> IntoIter<T> {
-        IntoIter {
+    pub fn into_iter(mut self) -> IntoIter<T> {
+        let iter = IntoIter {
             my_vec: self.my_vec,
+            layout: self.layout,
             len: self.len,
             next: 0,
-        }
+        };
+        self.erase();
+        iter
     }
 
     fn trim(&mut self) {
@@ -176,9 +183,12 @@ impl<T> MyVec<T> {
 
 impl<T> Drop for MyVec<T> {
     fn drop(&mut self) {
-        for index in 0..self.len {
-            unsafe {
+        unsafe {
+            for index in 0..self.len {
                 ptr::read(self.my_vec.as_ptr().offset(index as isize));
+            }
+            if self.capacity() != 0 {
+                dealloc(mem::transmute(self.my_vec.as_ptr()), self.layout);
             }
         }
     }
@@ -205,6 +215,35 @@ impl<T> DerefMut for MyVec<T> {
 #[cfg(test)]
 mod tests {
     use super::MyVec;
+
+    // Test the assumptions made in the implementation.
+    // alloc, dealloc and interaction with Unique.
+    #[test]
+    fn test_alloc_unique() {
+        use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+        use std::ptr::{Unique};
+        use std::mem;
+
+        let layout = Layout::array::<i32>(10).unwrap();
+        unsafe {
+        let ptr = alloc(layout);
+        if ptr.is_null() {
+            handle_alloc_error(layout);
+        }
+        let un: Unique<i32> = Unique::new_unchecked(mem::transmute(ptr));
+        let _oth_un = un;
+        // No move semantics as Unique, by definition, is never null.
+        assert_eq!(un.as_ptr().is_null(), false);
+        // un is not even made invalid, can still be dealloc-ated.
+        dealloc(mem::transmute(un.as_ptr()), layout);
+        // Run with address/leak sanitizer to look for use after free/leaks.
+        }
+    }
+
+    #[test]
+    fn test_vec_simple() {
+        let _my_vec: MyVec<i32> = MyVec::new(None);
+    }
 
     #[test]
     fn test_vec_int() {
