@@ -248,6 +248,11 @@ mod tests {
     #[test]
     fn test_vec_simple() {
         let _my_vec: MyVec<i32> = MyVec::new(None);
+        // Move
+        let _other_vec = _my_vec;
+        for _elem in _other_vec.iter() {
+            assert_eq!(_elem, &0);
+        }
     }
 
     /* Test vector of simple integers, for Deref and DerefMut */
