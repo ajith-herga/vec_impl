@@ -49,7 +49,7 @@ impl<T> Iterator for IntoIter<T> {
 impl<T> Drop for IntoIter<T> {
     fn drop(&mut self) {
         unsafe {
-            for index in 0..self.len {
+            for index in self.next..self.len {
                 ptr::read(self.my_vec.as_ptr().offset(index as isize));
             }
             if self.len != 0 {
@@ -77,7 +77,7 @@ impl<T> MyVec<T> {
         self.my_vec = Unique::empty();
         self.layout = Layout::new::<()>();
         self.len = 0;
-        self.reserve = 4
+        self.reserve = 4;
     }
 
     fn grow(&mut self) {
