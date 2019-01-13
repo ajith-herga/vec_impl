@@ -197,6 +197,14 @@ impl<T> Drop for MyVec<T> {
     }
 }
 
+impl<T> Extend<T> for MyVec<T> {
+    fn extend<I: IntoIterator<Item=T>>(&mut self, iter: I) {
+        for elem in iter.into_iter() {
+            self.push_back(elem)
+        }
+    }
+}
+
 impl<T> Deref for MyVec<T> {
     type Target = [T];
 
@@ -366,6 +374,10 @@ mod tests {
         for i in 0..30 {
             my_vec.push_back(AT::new(10 + i));
         }
+
+        // Try move with extend
+        let mut other_vec: MyVec<AT<i32>> = MyVec::new(None);
+        other_vec.extend(my_vec);
     }
 
     // Type that holds a reference to a string.

@@ -1,7 +1,6 @@
 # Things to do.
 ## Complete the API
     More work to do with the current API:
-    * Extend using another vector
     * Define macro to initialize from a literal array
 ## Integrate with TravisCI.
 ## New datastrutures
