@@ -1,11 +1,11 @@
 #![feature(allocator_api, alloc_layout_extra, ptr_internals)]
 
-use std::{cmp, slice};
 use std::mem::{self, size_of};
 use std::ops::{Deref, DerefMut};
 use std::ptr::{self, Unique};
+use std::{cmp, slice};
 // Unique does not implement move semantics, nor destroy underlying resource.
-use std::alloc::{alloc, realloc, dealloc, Layout, handle_alloc_error};
+use std::alloc::{alloc, dealloc, handle_alloc_error, realloc, Layout};
 
 /*
  * MyVec aims to provide functionality that matches std::vec::Vec.
@@ -202,7 +202,7 @@ impl<T> Drop for MyVec<T> {
 }
 
 impl<T> Extend<T> for MyVec<T> {
-    fn extend<I: IntoIterator<Item=T>>(&mut self, iter: I) {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         for elem in iter.into_iter() {
             self.push_back(elem)
         }
@@ -213,17 +213,13 @@ impl<T> Deref for MyVec<T> {
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            slice::from_raw_parts(self.my_vec.as_ptr(), self.len)
-        }
+        unsafe { slice::from_raw_parts(self.my_vec.as_ptr(), self.len) }
     }
 }
 
 impl<T> DerefMut for MyVec<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe {
-            slice::from_raw_parts_mut(self.my_vec.as_ptr(), self.len)
-        }
+        unsafe { slice::from_raw_parts_mut(self.my_vec.as_ptr(), self.len) }
     }
 }
 
@@ -238,22 +234,22 @@ mod tests {
     #[test]
     fn test_alloc_unique() {
         use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
-        use std::ptr::{Unique};
         use std::mem;
+        use std::ptr::Unique;
 
         let layout = Layout::array::<i32>(10).unwrap();
         unsafe {
-        let ptr = alloc(layout);
-        if ptr.is_null() {
-            handle_alloc_error(layout);
-        }
-        let un: Unique<i32> = Unique::new_unchecked(mem::transmute(ptr));
-        let _oth_un = un;
-        // No move semantics as Unique, by definition, is never null.
-        assert_eq!(un.as_ptr().is_null(), false);
-        // un is not even made invalid, can still be dealloc-ated.
-        dealloc(mem::transmute(un.as_ptr()), layout);
-        // Run with address/leak sanitizer to look for use after free/leaks.
+            let ptr = alloc(layout);
+            if ptr.is_null() {
+                handle_alloc_error(layout);
+            }
+            let un: Unique<i32> = Unique::new_unchecked(mem::transmute(ptr));
+            let _oth_un = un;
+            // No move semantics as Unique, by definition, is never null.
+            assert_eq!(un.as_ptr().is_null(), false);
+            // un is not even made invalid, can still be dealloc-ated.
+            dealloc(mem::transmute(un.as_ptr()), layout);
+            // Run with address/leak sanitizer to look for use after free/leaks.
         }
     }
 
@@ -296,10 +292,10 @@ mod tests {
             assert_eq!(my_vec.get(i), ints.get(i));
         }
         /* One of those times when borrow checker is too conservative */
-        let vec_len = my_vec.len()/2;
+        let vec_len = my_vec.len() / 2;
         my_vec[vec_len] = 35;
-        let vec_len = ints.len()/2;
-        ints[vec_len] = my_vec[my_vec.len()/2];
+        let vec_len = ints.len() / 2;
+        ints[vec_len] = my_vec[my_vec.len() / 2];
         for i in 0..30 {
             assert_eq!(my_vec.get(i), ints.get(i));
         }
@@ -336,9 +332,9 @@ mod tests {
     }
 
     // Type that holds an allocated value.
-    use std::ptr::{Unique};
-    use std::mem;
     use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
+    use std::mem;
+    use std::ptr::Unique;
     #[derive(Debug)]
     struct AT<T> {
         alloc: Unique<T>,
@@ -356,7 +352,7 @@ mod tests {
                 AT {
                     alloc: Unique::new_unchecked(mem::transmute(ptr)),
                     layout: layout,
-                    }
+                }
             }
         }
     }
