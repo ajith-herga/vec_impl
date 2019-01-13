@@ -130,17 +130,6 @@ impl<T> MyVec<T> {
     pub fn iter(&self) -> Iter<T> {}
     */
 
-    pub fn into_iter(mut self) -> IntoIter<T> {
-        let iter = IntoIter {
-            my_vec: self.my_vec,
-            layout: self.layout,
-            len: self.len,
-            next: 0,
-        };
-        self.erase();
-        iter
-    }
-
     fn trim(&mut self) {
         // Let minimum size remain at reserve. TODO: constant 4.
         let target_size = self.capacity() / 2;
@@ -181,6 +170,21 @@ impl<T> MyVec<T> {
             self.trim();
             Some(ret)
         }
+    }
+}
+
+impl<T> IntoIterator for MyVec<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    fn into_iter(mut self) -> Self::IntoIter {
+        let iter = IntoIter {
+            my_vec: self.my_vec,
+            layout: self.layout,
+            len: self.len,
+            next: 0,
+        };
+        self.erase();
+        iter
     }
 }
 
