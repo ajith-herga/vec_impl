@@ -2,7 +2,11 @@
 ## Complete the API
     More work to do with the current API:
     * Define macro to initialize from a literal array
+    * Implement Clone when T implements clone.
+    * Add benchmark tests
 ## Integrate with TravisCI.
+    * Run tests, benchmarks, build.
+    * Figure kcov.
 ## New datastrutures
     * Deque? The new interest.
     * Simple nullable array vs circular buffer

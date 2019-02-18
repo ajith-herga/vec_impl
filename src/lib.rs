@@ -223,6 +223,45 @@ impl<T> DerefMut for MyVec<T> {
     }
 }
 
+/* Experiment calling with a fixed arg, an initialized vec and recurse with elements */
+macro_rules! myvec_rec_impl {
+    ($vec:ident,) => (
+        println!("Empty!\n");
+    );
+    ($vec:ident, $elem:expr) => (
+            $vec.push_back($elem);
+    );
+    ($vec:ident, $elem:expr, $($elems:expr),*) => (
+        $vec.push_back($elem);
+        myvec_rec_impl!($vec, $($elems),*);
+    );
+}
+
+/* Macro which dispatches to vec with arg macro */
+macro_rules! myvec_rec {
+    [$($elem:expr),*] => {
+        {
+            let mut _myvec = MyVec::new(None);
+            myvec_rec_impl!(_myvec, $($elem),*);
+            _myvec
+        }
+    };
+}
+
+/* Macro does maps to relevant expression for every arg. */
+#[macro_export]
+macro_rules! myvec {
+    [$($elem:expr),*] => {
+        {
+            let mut _myvec = $crate::MyVec::new(None);
+            $(
+                _myvec.push_back($elem);
+             )*
+            _myvec
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::MyVec;
@@ -263,15 +302,47 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_vec_macro() {
+        /* Test the macro variant 1 that dispatches into 1 or more arg macro. */
+        let my_vec: MyVec<i32> = myvec![];
+        assert_eq!(my_vec.is_empty(), true);
+        let my_vec: MyVec<i32> = myvec![38i32];
+        assert_eq!(my_vec.last().unwrap(), &38i32);
+        let my_vec: MyVec<i32> = myvec![35i32, 38i32];
+        assert_eq!(my_vec.first().unwrap(), &35i32);
+        assert_eq!(my_vec.last().unwrap(), &38i32);
+    }
+
+    #[test]
+    fn test_vec_recursive_macro() {
+        let my_vec: MyVec<i32> = myvec_rec![];
+        assert_eq!(my_vec.is_empty(), true);
+        let my_vec: MyVec<i32> = myvec_rec![38i32];
+        assert_eq!(my_vec.last().unwrap(), &38i32);
+        let my_vec: MyVec<i32> = myvec_rec![35i32, 38i32];
+        assert_eq!(my_vec.first().unwrap(), &35i32);
+        assert_eq!(my_vec.last().unwrap(), &38i32);
+    }
+
+    /*
+     * Get a myvec and a normal vec with 0 or more identical elements.
+     */
+    macro_rules! push_vecs {
+        ($a:ident, $b:ident, [$($elem:expr),*]) => {
+            $(
+                $a.push_back($elem);
+                $b.push($elem);
+             )*
+        };
+    }
+
     /* Test vector of simple integers, for Deref and DerefMut */
     #[test]
     fn test_vec_int() {
-        let mut ints = vec![1, 2, 3, 4, 5];
-        let mut my_vec: MyVec<i32> = MyVec::new(None);
-
-        for elem in ints.iter() {
-            my_vec.push_back(*elem);
-        }
+        let mut my_vec: MyVec<i32> = MyVec::new(Some(2));
+        let mut ints: Vec<i32> = Vec::new();
+        push_vecs!(my_vec, ints, [1, 2, 3, 4, 5]);
 
         /* Verify Deref into splice, access method of splice. */
         assert_eq!(my_vec.is_empty(), false);
@@ -404,9 +475,8 @@ mod tests {
      */
     #[test]
     fn test_vec_rt_val() {
-        let mut my_vec: MyVec<RT> = MyVec::new(Some(2));
-
         let ints = vec![15, 150, 200, 250, 0, -15, -150, -200, -250];
+        let mut my_vec = MyVec::new(Some(2));
         for elem in ints.iter() {
             my_vec.push_back(RT::new(*elem));
         }
