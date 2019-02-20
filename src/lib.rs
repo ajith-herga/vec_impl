@@ -223,6 +223,19 @@ impl<T> DerefMut for MyVec<T> {
     }
 }
 
+impl<T: Clone> Clone for MyVec<T> {
+    fn clone(&self) -> Self {
+        /* Get a new Myvec, append clones by iterating over self elements. */
+        let mut _myvec = MyVec::new(Some(self.len()));
+
+        for elem in self.iter() {
+            _myvec.push_back(elem.clone());
+        }
+
+        return _myvec;
+    }
+}
+
 /* Experiment calling with a fixed arg, an initialized vec and recurse with elements */
 macro_rules! myvec_rec_impl {
     ($vec:ident,) => (
@@ -349,7 +362,7 @@ mod tests {
         assert_eq!(my_vec.len(), ints.len());
         assert_eq!(my_vec.first(), Some(&1));
         assert_eq!(my_vec.last(), Some(&5));
-
+        /* Verify DerefMut */
         {
             /* In a block to scope immutable borrow. */
             let mut splits = my_vec.split(|n| n % 2 == 0);
@@ -369,6 +382,14 @@ mod tests {
         ints[vec_len] = my_vec[my_vec.len() / 2];
         for i in 0..30 {
             assert_eq!(my_vec.get(i), ints.get(i));
+        }
+        /* Test mutating in an interator, implemented by DerefMut */
+        for elem in my_vec.iter_mut() {
+            *elem = *elem + 1;
+        }
+        /* Test if mutation worked, by comparing against source. */
+        for elem in my_vec.iter().enumerate() {
+            assert_eq!(*elem.1, ints.get(elem.0).unwrap() + 1);
         }
     }
 
@@ -518,5 +539,35 @@ mod tests {
         for i in (0..ints.len()).rev() {
             assert_eq!(rt_refs.get(i).unwrap().val, rt_refs.pop().unwrap().val);
         }
+    }
+
+    /*
+     * Tests for vector of vectors.
+     */
+    #[test]
+    fn test_vec_vec_ints() {
+        let first_vec = myvec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let mut vec_vec: MyVec<MyVec<i32>> = MyVec::new(None);
+
+        for i in 0..10 {
+            let mut iter_vec = first_vec.clone();
+            for elem in iter_vec.iter_mut() {
+                *elem = *elem + i;
+            }
+
+            vec_vec.push_back(iter_vec);
+        }
+
+        assert_eq!(vec_vec.is_empty(), false);
+        assert_eq!(vec_vec.len(), 10);
+
+        for elem in vec_vec.first().unwrap().iter().enumerate() {
+            assert_eq!(first_vec.get(elem.0).unwrap(), elem.1);
+        }
+
+        /* Clone the vec of vec. */
+        let clone_vec_vec = vec_vec.clone();
+        assert_eq!(clone_vec_vec.is_empty(), false);
+        assert_eq!(clone_vec_vec.len(), 10);
     }
 }
