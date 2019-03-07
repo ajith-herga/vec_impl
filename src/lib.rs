@@ -3,7 +3,7 @@
 use std::mem::{self, size_of};
 use std::ops::{Deref, DerefMut};
 use std::ptr::{self, Unique};
-use std::{cmp, slice};
+use std::{cmp, fmt, slice};
 // Unique does not implement move semantics, nor destroy underlying resource.
 use std::alloc::{alloc, dealloc, handle_alloc_error, realloc, Layout};
 
@@ -233,6 +233,21 @@ impl<T: Clone> Clone for MyVec<T> {
         }
 
         return _myvec;
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for MyVec<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> Result<(), fmt::Error>
+    {
+        write!(formatter, "[")?;
+        let mut iter = self.iter();
+        if let Some(first) = iter.next() {
+            write!(formatter, "{}", first)?;
+        }
+        for elem in iter {
+            write!(formatter, ", {}", elem)?;
+        }
+        write!(formatter, "]")
     }
 }
 
