@@ -8,7 +8,8 @@ use std::slice;
 fn computeansv(iterator: slice::Iter<i32>) {
     // Store the nearest smallers of interest.
     // They are unique and get pruned when a smaller value is encountered.
-    let mut uresvec = vec_impl::MyVec::new(None);
+    let mut uresvec = vec_impl::MyStack::new();
+    // Store answer in a vec.
     let mut resvec = vec_impl::MyVec::new(None);
     let mut prev_elem: i32 = 0;
     for (index, elem) in iterator.enumerate() {
@@ -18,12 +19,12 @@ fn computeansv(iterator: slice::Iter<i32>) {
         }
         if prev_elem < *elem {
             resvec.push_back(prev_elem);
-            uresvec.push_back(prev_elem);
+            uresvec.push(prev_elem);
         } else if prev_elem == *elem {
             resvec.push_back(prev_elem);
         } else {
             loop {
-                if let Some(result_elem) = uresvec.back() {
+                if let Some(result_elem) = uresvec.top() {
                     if *result_elem < *elem {
                         resvec.push_back(*result_elem);
                         break;
