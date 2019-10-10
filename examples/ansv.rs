@@ -1,48 +1,53 @@
 /* All nearest (from the left) smaller values. */
 extern crate vec_impl;
 use std::slice;
-/* For a given number, nearest smaller is either immediately to the left or
-   in the stored previous results. When none are found, the given number itself
-   is nearest smaller.
-*/
-fn computeansv(iterator: slice::Iter<i32>) {
-    // Store the nearest smallers of interest.
-    // They are unique and get pruned when a smaller value is encountered.
-    let mut uresvec = vec_impl::MyStack::new();
-    // Store answer in a vec.
-    let mut resvec = vec_impl::MyVec::new(None);
-    let mut prev_elem: i32 = 0;
-    for (index, elem) in iterator.enumerate() {
-        if index == 0 {
-            prev_elem = *elem;
-            continue;
-        }
-        if prev_elem < *elem {
-            resvec.push_back(prev_elem);
-            uresvec.push(prev_elem);
-        } else if prev_elem == *elem {
-            resvec.push_back(prev_elem);
+/*
+ * For a given number, nearest smaller is either immediately to the left or in the stored previous
+ * results. When none are found print none.
+ */
+
+/* A wrap struct to impl result */
+struct SmallerClose(std::option::Option<i32>);
+
+impl std::fmt::Display for SmallerClose {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if let Some(value) = self.0 {
+            write!(f, "{}", value)
         } else {
-            loop {
-                if let Some(result_elem) = uresvec.top() {
-                    if *result_elem < *elem {
-                        resvec.push_back(*result_elem);
-                        break;
-                    }
-                } else {
-                    resvec.push_back(*elem);
+            write!(f, "-")
+        }
+    }
+}
+fn computeansv(iterator: slice::Iter<i32>) {
+    /*
+     * Store the nearest smallers, how does this change?  They get pruned when a smaller value is
+     * encountered.
+     */
+    let mut uresvec = vec_impl::MyStack::new();
+    /*
+     * A toy array to store result: can be int or none, None when there is nothing smaller in the
+     * left.
+     */
+    let mut resvec = vec_impl::MyVec::new(None);
+    for elem in iterator {
+        loop {
+            if let Some(result_elem) = uresvec.top() {
+                if *result_elem < *elem {
+                    resvec.push_back(SmallerClose(Some(*result_elem)));
                     break;
                 }
-                // Did not find a good stored result, pop stack.
-                uresvec.pop();
+            } else {
+                resvec.push_back(SmallerClose(None));
+                break;
             }
+            uresvec.pop();
         }
-        // Debug
-        // println!("At {}:{}\nAnswer: {}\nLows: {}", index, elem, resvec, uresvec);
-        prev_elem = *elem;
+        uresvec.push(*elem);
     }
-    print!("Answer: -,");
-    print!("{} \n", resvec);
+    /*
+     * All this to just print result.. may be we need to have a custom struct
+     */
+    println!("\nAnswer: {}", resvec);
 }
 
 fn main() {
