@@ -2,6 +2,8 @@
 
 mod vec;
 mod stack;
+mod heap;
 
 pub use vec::MyVec;
 pub use stack::MyStack;
+pub use heap::MyHeap;
