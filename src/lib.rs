@@ -6,4 +6,5 @@ mod heap;
 
 pub use vec::MyVec;
 pub use stack::MyStack;
-pub use heap::MyHeap;
+pub use heap::MyMaxHeap;
+pub use heap::MyMinHeap;

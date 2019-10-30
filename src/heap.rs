@@ -1,14 +1,23 @@
 use vec::MyVec;
-use std::vec::Vec;
+use std::{fmt, vec::Vec};
+pub struct MyMaxHeap<T> {
+    my_heap: MyHeap<T>,
+}
 
-pub struct MyHeap<T: Ord> {
+pub struct MyMinHeap<T> {
+    my_heap: MyHeap<T>,
+}
+
+pub struct MyHeap<T> {
     my_vec: MyVec<T>,
+    max: bool,
 }
 
 impl<T: Ord> MyHeap<T> {
-    pub fn new() -> Self {
+    pub fn new(max: bool) -> Self {
         MyHeap {
             my_vec: MyVec::new(None),
+            max: max,
         }
     }
 
@@ -19,7 +28,10 @@ impl<T: Ord> MyHeap<T> {
 
         while child != 0 {
             let parent = (child - 1)/ 2;
-            if self.my_vec[child] > self.my_vec[parent] {
+            let parent_smaller = self.my_vec[child] > self.my_vec[parent];
+            let child_smaller = !parent_smaller;
+            if self.max && parent_smaller || !self.max && child_smaller
+            {
                 self.my_vec.swap(parent, child);
             }
             child = parent;
@@ -48,15 +60,35 @@ impl<T: Ord> MyHeap<T> {
         let mut parent = 0;
         // If both children > len stop.
         while parent*2 < last {
+            // Find the loudest among children
             let child1 = parent*2 + 1;
             let child2 = child1 + 1;
-            let mut greatest = child1;
+            let mut loudest = child1;
             if child2 <= last {
-                greatest = if self.my_vec[child1] > self.my_vec[child2] {child1}
-                    else {child2}
+                if self.max {
+                    loudest = if self.my_vec[child1] > self.my_vec[child2] {child1}
+                        else {child2}
+                } else {
+                    loudest = if self.my_vec[child1] < self.my_vec[child2] {child1}
+                        else {child2}
+                }
+
             }
-            self.my_vec.swap(parent, greatest);
-            parent = greatest;
+            /*
+             * Check if the heap property is met. If so, return early, no need to check the rest.
+             */
+            if self.my_vec[parent] == self.my_vec[loudest] ||
+                self.max && self.my_vec[parent] > self.my_vec[loudest] ||
+                !self.max && self.my_vec[parent] < self.my_vec[loudest]
+            {
+                break;
+            }
+            // Swap to return heap property at this level
+            self.my_vec.swap(parent, loudest);
+            /*
+             * Move down to loudest child root as swap may have broken heap property there.
+             */
+            parent = loudest;
         }
         return top;
     }
@@ -69,8 +101,9 @@ impl<T: Ord> MyHeap<T> {
         return list;
     }
 
-    pub fn from_vec(elems: Vec<T>) -> Self {
-        let mut heap: MyHeap<T> = MyHeap::new();
+
+    pub fn from_vec(elems: Vec<T>, max: bool) -> Self {
+        let mut heap: MyHeap<T> = MyHeap::new(max);
         for elem in elems.into_iter() {
             heap.add(elem);
         }
@@ -78,34 +111,100 @@ impl<T: Ord> MyHeap<T> {
     }
 }
 
+impl<T: fmt::Display> fmt::Display for MyHeap<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> Result<(), fmt::Error>
+    {
+        write!(formatter, ", {}", self.my_vec)
+    }
+}
+
+impl<T: Ord> MyMinHeap<T> {
+    pub fn new() -> Self {
+        MyMinHeap {
+            my_heap: MyHeap::new(false),
+        }
+    }
+
+    pub fn add(&mut self, elem: T) {
+    }
+
+    pub fn top(&self) -> Option<&T> {
+        self.my_heap.top()
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        self.my_heap.pop()
+    }
+
+    pub fn from_vec(elems: Vec<T>)  -> Self {
+        let mut heap: MyHeap<T> = MyHeap::new(false);
+        for elem in elems.into_iter() {
+            heap.add(elem);
+        }
+        MyMinHeap {
+            my_heap: heap,
+        }
+    }
+
+    pub fn to_vec(mut self) -> Vec<T> {
+        self.my_heap.to_vec()
+    }
+}
+
+impl<T: Ord> MyMaxHeap<T> {
+    pub fn new() -> Self {
+        MyMaxHeap {
+            my_heap: MyHeap::new(true),
+        }
+    }
+
+    pub fn add(&mut self, elem: T) {
+    }
+
+    pub fn top(&self) -> Option<&T> {
+        self.my_heap.top()
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        self.my_heap.pop()
+    }
+
+    pub fn from_vec(elems: Vec<T>)  -> Self {
+        let mut heap: MyHeap<T> = MyHeap::new(true);
+        for elem in elems.into_iter() {
+            heap.add(elem);
+        }
+        MyMaxHeap {
+            my_heap: heap,
+        }
+    }
+
+    pub fn to_vec(mut self) -> Vec<T> {
+        self.my_heap.to_vec()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::MyHeap;
+    use super::MyMaxHeap;
+    use super::MyMinHeap;
     #[test]
     fn test_none() {
-        let mut heap: MyHeap<i32> = MyHeap::new();
+        let mut heap: MyMaxHeap<i32> = MyMaxHeap::new();
+        assert_eq!(heap.top(), None);
+        assert_eq!(heap.pop(), None);
+        let mut heap: MyMinHeap<i32> = MyMinHeap::new();
         assert_eq!(heap.top(), None);
         assert_eq!(heap.pop(), None);
     }
-    /*
+
     #[test]
     fn test_heap_sort() {
         let sorted_vec = vec![9, 8, 7, 6, 5, 4, 3, 2, 1];
-        let unsorted_vec = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-        let heap = MyHeap::from_vec(unsorted_vec);
+        let rev_sorted_vec = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let heap = MyMaxHeap::from_vec(rev_sorted_vec.clone());
         assert_eq!(heap.to_vec(), sorted_vec);
-    }
-    */
-    #[test]
-    fn test_heap_add() {
-        let unsorted_vec = vec![1, 2, 3, 4, 5, 6, 7, 8, 9];
-        let mut heap = MyHeap::new();
-        for elem in unsorted_vec.iter() {
-            heap.add(elem);
-        }
-        while let Some(elem) = heap.pop() {
-            println!("Top: {}", elem);
-        }
-        assert_eq!(heap.to_vec().len(), 1);
+        let heap = MyMinHeap::from_vec(sorted_vec);
+        assert_eq!(heap.to_vec(), rev_sorted_vec);
     }
 }
