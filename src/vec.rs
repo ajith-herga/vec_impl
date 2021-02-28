@@ -1,15 +1,15 @@
 use std::mem::{self, size_of};
 use std::ops::{Deref, DerefMut};
-use std::ptr::{self, Unique};
+use std::ptr::{self, NonNull};
 use std::{cmp, fmt, slice};
-// Unique does not implement move semantics, nor destroy underlying resource.
+// NonNull does not implement move semantics, nor destroy underlying resource.
 use std::alloc::{alloc, dealloc, handle_alloc_error, realloc, Layout};
 
 /*
  * MyVec aims to provide functionality that matches std::vec::Vec.
  */
 pub struct MyVec<T> {
-    my_vec: Unique<T>,
+    my_vec: NonNull<T>,
     layout: Layout,
     len: usize,
     reserve: usize,
@@ -25,7 +25,7 @@ pub struct MyVec<T> {
  * pop_front on MyVec would only be possible with a circular buffer..
  */
 pub struct IntoIter<T> {
-    my_vec: Unique<T>,
+    my_vec: NonNull<T>,
     layout: Layout,
     len: usize,
     next: usize,
@@ -60,7 +60,7 @@ impl<T> Drop for IntoIter<T> {
 impl<T> MyVec<T> {
     pub fn new(reserve: Option<usize>) -> Self {
         MyVec {
-            my_vec: Unique::empty(),
+            my_vec: NonNull::dangling(),
             layout: Layout::new::<()>(),
             len: 0,
             reserve: cmp::max(reserve.unwrap_or(32), 4),
@@ -72,7 +72,7 @@ impl<T> MyVec<T> {
     }
 
     fn erase(&mut self) {
-        self.my_vec = Unique::empty();
+        self.my_vec = NonNull::dangling();
         self.layout = Layout::new::<()>();
         self.len = 0;
         self.reserve = 4;
@@ -88,7 +88,7 @@ impl<T> MyVec<T> {
                     handle_alloc_error(layout);
                 }
                 self.layout = layout;
-                self.my_vec = Unique::new_unchecked(mem::transmute(ptr));
+                self.my_vec = NonNull::new_unchecked(mem::transmute(ptr));
             }
         } else {
             // grow by reallocate if size is not zero.
@@ -105,7 +105,7 @@ impl<T> MyVec<T> {
                 }
                 self.layout = layout;
                 // Own the allocated pointer.
-                self.my_vec = Unique::new_unchecked(mem::transmute(ptr));
+                self.my_vec = NonNull::new_unchecked(mem::transmute(ptr));
             }
         }
     }
@@ -143,7 +143,7 @@ impl<T> MyVec<T> {
                     handle_alloc_error(layout);
                 }
                 self.layout = layout;
-                self.my_vec = Unique::new_unchecked(mem::transmute(ptr));
+                self.my_vec = NonNull::new_unchecked(mem::transmute(ptr));
             }
         }
     }
@@ -294,13 +294,13 @@ mod tests {
 
     /*
      * Test the assumptions made in the implementation.
-     * alloc, dealloc and interaction with Unique.
+     * alloc, dealloc and interaction with NonNull.
      */
     #[test]
     fn test_alloc_unique() {
         use std::alloc::{alloc, dealloc, handle_alloc_error, Layout};
         use std::mem;
-        use std::ptr::Unique;
+        use std::ptr::NonNull;
 
         let layout = Layout::array::<i32>(10).unwrap();
         unsafe {
@@ -308,7 +308,7 @@ mod tests {
             if ptr.is_null() {
                 handle_alloc_error(layout);
             }
-            let un: Unique<i32> = Unique::new_unchecked(mem::transmute(ptr));
+            let un: NonNull<i32> = NonNull::new_unchecked(mem::transmute(ptr));
             let _oth_un = un;
             // No move semantics as Unique, by definition, is never null.
             assert_eq!(un.as_ptr().is_null(), false);
