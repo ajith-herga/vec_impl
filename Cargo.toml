@@ -3,4 +3,9 @@ name = "vec_impl"
 version = "0.1.0"
 authors = ["ajith <ajkedlaya@gmail.com>"]
 
-[dependencies]
+[build-dependencies]
+bindgen = "0.59.1"
+cc = "1.0"
+
+[dev-dependencies]
+anyhow = "1.0"
